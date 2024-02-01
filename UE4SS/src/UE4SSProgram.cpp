@@ -998,6 +998,32 @@ namespace RC
             }
         }
     }
+    
+    template <typename ModType>
+    auto start_mod(Mod* mod) -> void
+    {
+        Output::send(STR("Starting {} mod '{}'\n"), std::is_same_v<ModType, LuaMod> ? STR("Lua") : STR("C++"), mod->get_name().data());
+        mod->start_mod();
+    }
+    
+    auto UE4SSProgram::setup_mod(const char* mod_path) -> void
+    {
+        ProfilerScope();
+
+        const std::filesystem::path sub_directory(mod_path);
+
+        // Create the mod but don't install it yet
+        if (std::filesystem::exists(sub_directory / "scripts"))
+        {
+            m_mods.emplace_back(std::make_unique<LuaMod>(*this, sub_directory.stem().stem().wstring(), sub_directory.wstring()));
+            start_mod<LuaMod>(m_mods.back().get());
+        }
+        if (std::filesystem::exists(sub_directory / "dlls"))
+        {
+            m_mods.emplace_back(std::make_unique<CppMod>(*this, sub_directory.stem().stem().wstring(), sub_directory.wstring()));
+            start_mod<CppMod>(m_mods.back().get());
+        }
+    }
 
     template <typename ModType>
     auto install_mods(std::vector<std::unique_ptr<Mod>>& mods) -> void
@@ -1311,6 +1337,11 @@ namespace RC
     auto UE4SSProgram::get_module_directory() -> File::StringViewType
     {
         return m_module_file_path.c_str();
+    }
+
+    auto UE4SSProgram::get_game_executable_directory() -> File::StringViewType
+    {
+        return m_game_executable_directory.c_str();
     }
 
     auto UE4SSProgram::get_working_directory() -> File::StringViewType
