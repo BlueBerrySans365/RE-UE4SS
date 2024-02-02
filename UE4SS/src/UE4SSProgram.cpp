@@ -158,6 +158,11 @@ namespace RC
         return lib;
     }
 
+    auto setup_mod(wchar_t* mod_path) -> void
+    {
+        UE4SSProgram::get_program().setup_mod(mod_path);
+    }
+
     UE4SSProgram::UE4SSProgram(const std::wstring& moduleFilePath, std::initializer_list<BinaryOptions> options) : MProgram(options)
     {
         ProfilerScope();
@@ -1000,28 +1005,61 @@ namespace RC
     }
     
     template <typename ModType>
-    auto start_mod(Mod* mod) -> void
+    auto start_mod(const std::unique_ptr<Mod>& mod) -> void
     {
+        if (!mod->is_installed()) return;
         Output::send(STR("Starting {} mod '{}'\n"), std::is_same_v<ModType, LuaMod> ? STR("Lua") : STR("C++"), mod->get_name().data());
         mod->start_mod();
     }
+
+    template <typename ModType>
+    auto install_mod(std::vector<std::unique_ptr<Mod>>& mods) -> void
+    {
+        const auto& mod = mods.back();
+        
+        if (!dynamic_cast<ModType*>(mod.get())) return;
+
+        if (std::find_if(mods.begin(), mods.end(), [&](auto& elem) {
+            return elem->get_name() == mod->get_name();
+        }) == mods.end())
+        {
+            mod->set_installable(false);
+            Output::send(STR("Mod name '{}' is already in use.\n"), mod->get_name());
+            return;
+        }
+
+        if (mod->is_installed())
+        {
+            Output::send(STR("Tried to install a mod that was already installed, Mod: '{}'\n"), mod->get_name());
+            return;
+        }
+
+        if (!mod->is_installable())
+        {
+            Output::send(STR("Was unable to install mod '{}' for unknown reasons. Mod is not installable.\n"), mod->get_name());
+            return;
+        }
+
+        mod->set_installed(true);
+    }
     
-    auto UE4SSProgram::setup_mod(const char* mod_path) -> void
+    auto UE4SSProgram::setup_mod(wchar_t* mod_path) -> void
     {
         ProfilerScope();
-
+        
         const std::filesystem::path sub_directory(mod_path);
 
-        // Create the mod but don't install it yet
         if (std::filesystem::exists(sub_directory / "scripts"))
         {
-            m_mods.emplace_back(std::make_unique<LuaMod>(*this, sub_directory.stem().stem().wstring(), sub_directory.wstring()));
-            start_mod<LuaMod>(m_mods.back().get());
+            m_mods.emplace_back(std::make_unique<LuaMod>(*this, sub_directory.parent_path().filename().wstring(), sub_directory.wstring()));
+            install_mod<LuaMod>(m_mods);
+            start_mod<LuaMod>(m_mods.back());
         }
         if (std::filesystem::exists(sub_directory / "dlls"))
         {
-            m_mods.emplace_back(std::make_unique<CppMod>(*this, sub_directory.stem().stem().wstring(), sub_directory.wstring()));
-            start_mod<CppMod>(m_mods.back().get());
+            m_mods.emplace_back(std::make_unique<CppMod>(*this, sub_directory.parent_path().filename().wstring(), sub_directory.wstring()));
+            install_mod<CppMod>(m_mods);
+            start_mod<CppMod>(m_mods.back());
         }
     }
 

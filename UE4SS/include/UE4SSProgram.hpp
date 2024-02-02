@@ -62,6 +62,8 @@ namespace RC
         uint64_t safety_padding[8]{0};
     };
 
+    EXTERN_C RC_UE4SS_API auto setup_mod(wchar_t* mod_path) -> void;
+    
     class UE4SSProgram : public MProgram
     {
       public:
@@ -172,7 +174,6 @@ namespace RC
         auto setup_cpp_mods() -> void;
         auto start_cpp_mods() -> void;
         auto setup_mods() -> void;
-        RC_UE4SS_API auto setup_mod(const char* mod_path) -> void;
         auto start_lua_mods() -> void;
         auto uninstall_mods() -> void;
         auto fire_unreal_init_for_cpp_mods() -> void;
@@ -180,6 +181,7 @@ namespace RC
         auto fire_dll_load_for_cpp_mods(std::wstring_view dll_name) -> void;
 
       public:
+        auto setup_mod(wchar_t* mod_path) -> void;
         auto init() -> void;
         auto is_program_started() -> bool;
         auto reinstall_mods() -> void;
