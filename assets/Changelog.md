@@ -1,10 +1,31 @@
-v2.6.0
+v3.0.0
 ==============
-TBD
+2024-02-04
+
+After 9 months in development, we hope 3.0 was worth the wait. We want future releases to be more frequent, as constantly telling people "try latest experimental" is never a good solution.
+
+For the next release, we have some exciting new features in development, so stay tuned for those. We're very excited to reveal what we've been working on soon, but we really needed to get 3.0 out first.
+
+-UE4SS team
+
+## Installation over 2.5.2
+
+Remember to check the `README` for the latest installation instructions.
+
+Since the `UE4SS-settings.ini` has changed in this release, you should use the new one, so if you have made settings changes, remember to back them up!
+
+When installing 3.0 in the place of the previous release 2.5.2, you must replace all existing UE4SS files with new files, except for the `UE4SS_Signatures` folder if your game is using custom sigs. 
+
+3.0 also uses two new dlls:
+- `UE4SS.dll`
+- `dwmapi.dll`
+
+and no longer uses the older `xinput1_3.dll`, **so please also delete `xinput1_3.dll` if you have one**. 
+
 ## New
 
 ### General
-Added support for UE Version 5.2 games
+Added support for UE Version 5.2 and 5.3 games
 
 New proxy DLL loading system. - LocalCC  
 Different proxy DLLs can now easily be compiled for cases where xinput1_3 cannot be used for any reason.  
@@ -51,6 +72,8 @@ If the hooked function has a return value, the second param to the post callback
 Out-params for script hooks (`RegisterCustomEvent` or `RegisterHook` on a BP-only UFunction) can now be set by doing `Param:set(<new-value>)`
 
 Added the function `Empty` to TArray
+
+Added `RegisterLoadMapPreHook`/`RegisterLoadMapPostHook` hooks for `UEngine::LoadMap`.
 
 ### C++ API
 Finalize C++ API. - LocalCC; Truman
@@ -134,7 +157,7 @@ This means the syntax for those functions is now identical to a range-based for 
 ### Repo & Build Process
 Add automated release script - Truman
 
-Change documentation build process - Truman; Buckminsterfullerene
+Change documentation build process; the docs will now have a dev version (at /dev) for changes on main branch and a current version (at normal root) for the state of the docs at the current release - Truman; Buckminsterfullerene
 
 Removed libfmt dependency
 
