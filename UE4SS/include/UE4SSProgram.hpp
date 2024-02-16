@@ -192,6 +192,7 @@ namespace RC
         RC_UE4SS_API auto get_mods_directory() -> File::StringViewType;
         RC_UE4SS_API auto generate_uht_compatible_headers() -> void;
         RC_UE4SS_API auto generate_cxx_headers(const std::filesystem::path& output_dir) -> void;
+        RC_UE4SS_API auto generate_csharp_types(const std::filesystem::path& output_dir) -> void;
         RC_UE4SS_API auto generate_lua_types(const std::filesystem::path& output_dir) -> void;
         auto get_debugging_ui() -> GUI::DebuggingGUI&
         {

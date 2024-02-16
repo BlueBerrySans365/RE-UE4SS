@@ -32,6 +32,9 @@ namespace RC
 
         auto is_integral_type(Unreal::FProperty* property) -> bool;
         auto get_native_enum_name(Unreal::UEnum* uenum, bool include_type = true) -> File::StringType;
+        auto generate_property_csharp_name(Unreal::FProperty* property,
+                                        bool is_top_level_declaration,
+                                        Unreal::UObject* class_context) -> File::StringType;
         auto generate_property_cxx_name(Unreal::FProperty* property,
                                         bool is_top_level_declaration,
                                         Unreal::UObject* class_context,
