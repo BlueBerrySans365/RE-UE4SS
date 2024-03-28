@@ -23,7 +23,7 @@ FetchContent_Declare(ImGui
     GIT_SHALLOW TRUE
     GIT_PROGRESS ON
     CONFIGURE_COMMAND "")
-    
+
 FetchContent_Declare(ImGuiTextEdit
     GIT_REPOSITORY git@github.com:UE4SS-RE/ImGuiColorTextEdit.git
     GIT_TAG master
@@ -47,25 +47,27 @@ FetchContent_Declare(zydis
     GIT_TAG v4.1.0
     GIT_SHALLOW TRUE
     GIT_PROGRESS ON)
-    
+
 add_subdirectory("zydis")
 # Zydis end
 
-# PolyHook start
-FetchContent_Declare(PolyHook2
-    GIT_REPOSITORY git@github.com:stevemk14ebr/PolyHook_2_0.git
-    GIT_TAG fd2a88f09c8ae89440858fc52573656141013c7f
+# safetyhook start
+FetchContent_Declare(
+    safetyhook
+    GIT_REPOSITORY "https://github.com/UE4SS-RE/safetyhook.git"
+    GIT_TAG "4def59079b95e08dc086cecf5515abde377059e5"
     GIT_PROGRESS ON)
+FetchContent_MakeAvailable(safetyhook)
 
-add_subdirectory("PolyHook_2_0")
-# PolyHook end
+add_subdirectory("safetyhook")
+# safetyhook end
 
 # raw_pdb start
 FetchContent_Declare(raw_pdb
     GIT_REPOSITORY git@github.com:MolecularMatters/raw_pdb.git
     GIT_TAG 8c6a7146393c83d27fa101e8bc8017f2a7f151df
     GIT_PROGRESS ON)
-    
+
 add_subdirectory("raw_pdb")
 # raw_pdb end
 
