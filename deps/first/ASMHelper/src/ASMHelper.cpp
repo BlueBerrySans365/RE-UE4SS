@@ -12,13 +12,25 @@ namespace RC::ASM
         ZydisDecoder decoder{};
         ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
         ZyanUSize offset = 0;
-        ZydisDecodedInstruction instruction{};
-        ZydisDecodedOperand operands[10]{};
-        while (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, instruction_ptr + offset, 16 - offset, &instruction, operands)))
+
+        Instruction instruction{in_instruction_ptr, {}, {}};
+        while (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, instruction_ptr + offset, 16 - offset, &instruction.raw, instruction.operands)))
         {
             break;
         }
-        return {in_instruction_ptr, instruction, operands};
+        return instruction;
+    }
+
+    auto is_jmp_instruction(void* in_instruction_ptr) -> bool
+    {
+        auto instruction = get_first_instruction_at_address(in_instruction_ptr);
+        return instruction.raw.mnemonic == ZYDIS_MNEMONIC_JMP;
+    }
+
+    auto is_call_instruction(void* in_instruction_ptr) -> bool
+    {
+        auto instruction = get_first_instruction_at_address(in_instruction_ptr);
+        return instruction.raw.mnemonic == ZYDIS_MNEMONIC_CALL;
     }
 
     auto resolve_absolute_address(void* in_instruction_ptr) -> void*
