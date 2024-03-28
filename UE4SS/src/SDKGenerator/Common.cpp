@@ -479,6 +479,338 @@ namespace RC::UEGenerator
         }
         throw std::runtime_error(RC::fmt("Unsupported property class %S", field_class_name.c_str()));
     }
+    auto generate_property_csharp_name(FProperty* property, bool is_top_level_declaration, UObject* class_context)
+            -> File::StringType
+    {
+        const std::wstring field_class_name = property->GetClass().GetName();
+
+        // Byte Property
+        if (property->IsA<FByteProperty>())
+        {
+            FByteProperty* byte_property = static_cast<FByteProperty*>(property);
+            UEnum* enum_value = byte_property->GetEnum();
+
+            if (enum_value != NULL)
+            {
+                // Non-EnumClass enumerations should be wrapped into TEnumAsByte according to UHT
+                const std::wstring enum_type_name = enum_value->GetName();
+                return std::format(STR("{}"), enum_type_name);
+            }
+            return STR("byte");
+        }
+
+        // Enum Property
+        if (property->IsA<FEnumProperty>())
+        {
+            FEnumProperty* enum_property = static_cast<FEnumProperty*>(property);
+            UEnum* uenum = enum_property->GetEnum();
+
+            if (uenum == NULL)
+            {
+                throw std::runtime_error(RC::fmt("EnumProperty %S does not have a valid Enum value", property->GetName().c_str()));
+            }
+
+            const std::wstring enum_type_name = get_native_enum_name(uenum);
+            return enum_type_name;
+        }
+
+        // Bool Property
+        if (property->IsA<FBoolProperty>())
+        {
+            FBoolProperty* bool_property = static_cast<FBoolProperty*>(property);
+            if (is_top_level_declaration && bool_property->GetFieldMask() != 255)
+            {
+                return STR("byte");
+            }
+            return STR("bool");
+        }
+
+        // Standard Numeric Properties
+        if (property->IsA<FInt8Property>())
+        {
+            return STR("sbyte");
+        }
+        else if (property->IsA<FInt16Property>())
+        {
+            return STR("short");
+        }
+        else if (property->IsA<FIntProperty>())
+        {
+            return STR("int");
+        }
+        else if (property->IsA<FInt64Property>())
+        {
+            return STR("long");
+        }
+        else if (property->IsA<FUInt16Property>())
+        {
+            return STR("ushort");
+        }
+        else if (property->IsA<FUInt32Property>())
+        {
+            return STR("uint");
+        }
+        else if (property->IsA<FUInt64Property>())
+        {
+            return STR("ulong");
+        }
+        else if (property->IsA<FFloatProperty>())
+        {
+            return STR("float");
+        }
+        else if (property->IsA<FDoubleProperty>())
+        {
+            return STR("double");
+        }
+
+        // Class Properties
+        if (property->IsA<FClassProperty>() || property->IsA<FAssetClassProperty>())
+        {
+            FClassProperty* class_property = static_cast<FClassProperty*>(property);
+            UClass* meta_class = class_property->GetMetaClass();
+
+            if (meta_class == NULL || meta_class == UObject::StaticClass())
+            {
+                return STR("UClass*");
+            }
+
+            File::StringType meta_class_name{};
+            meta_class_name.append(get_native_class_name(meta_class, false));
+            return std::format(STR("TSubclassOf<{}>"), meta_class_name);
+        }
+
+        if (auto* class_property = CastField<FClassPtrProperty>(property); class_property)
+        {
+            // TODO: Confirm that this is accurate
+            return STR("TObjectPtr<UClass>");
+        }
+
+        if (property->IsA<FSoftClassProperty>())
+        {
+            FSoftClassProperty* soft_class_property = static_cast<FSoftClassProperty*>(property);
+            UClass* meta_class = soft_class_property->GetMetaClass();
+
+            if (meta_class == NULL)
+            {
+                return STR("TSoftClassPtr<UClass>");
+            }
+            else if (meta_class == UObject::StaticClass())
+            {
+                return STR("TSoftClassPtr<UObject>");
+            }
+            
+            const std::wstring meta_class_name = get_native_class_name(meta_class, false);
+            return std::format(STR("TSoftClassPtr<{}>"), meta_class_name);
+        }
+
+        // Object Properties
+        //  TODO: Verify that the syntax for 'AssetObjectProperty' is the same as for 'ObjectProperty'.
+        //        If it's not, then add another branch here after you figure out what the syntax should be.
+        if (property->IsA<FObjectProperty>() || property->IsA<FAssetObjectProperty>())
+        {
+            FObjectProperty* object_property = static_cast<FObjectProperty*>(property);
+            UClass* property_class = object_property->GetPropertyClass();
+
+            if (property_class == NULL)
+            {
+                return STR("UObject*");
+            }
+
+            const std::wstring property_class_name = get_native_class_name(property_class, false);
+            return std::format(STR("{}*"), property_class_name);
+        }
+
+        if (auto* object_property = CastField<FObjectPtrProperty>(property); object_property)
+        {
+            auto* property_class = object_property->GetPropertyClass();
+
+            if (!property_class)
+            {
+                return STR("TObjectPtr<UObject>");
+            }
+            else
+            {
+                const auto property_class_name = get_native_class_name(property_class, false);
+                return std::format(STR("TObjectPtr<{}>"), property_class_name);
+            }
+        }
+
+        if (property->IsA<FWeakObjectProperty>())
+        {
+            FWeakObjectProperty* weak_object_property = static_cast<FWeakObjectProperty*>(property);
+            UClass* property_class = weak_object_property->GetPropertyClass();
+
+            if (property_class == NULL)
+            {
+                return STR("TWeakObjectPtr<UObject>");
+            }
+
+            File::StringType property_class_name{};
+            property_class_name.append(get_native_class_name(property_class, false));
+            return std::format(STR("TWeakObjectPtr<{}>"), property_class_name);
+        }
+
+        if (property->IsA<FLazyObjectProperty>())
+        {
+            FLazyObjectProperty* lazy_object_property = static_cast<FLazyObjectProperty*>(property);
+            UClass* property_class = lazy_object_property->GetPropertyClass();
+
+            if (property_class == NULL)
+            {
+                return STR("TLazyObjectPtr<UObject>");
+            }
+
+            File::StringType property_class_name{};
+            property_class_name.append(get_native_class_name(property_class, false));
+            return std::format(STR("TLazyObjectPtr<{}>"), property_class_name);
+        }
+
+        if (property->IsA<FSoftObjectProperty>())
+        {
+            FSoftObjectProperty* soft_object_property = static_cast<FSoftObjectProperty*>(property);
+            UClass* property_class = soft_object_property->GetPropertyClass();
+
+            if (property_class == NULL)
+            {
+                return STR("TSoftObjectPtr<UObject>");
+            }
+
+            const std::wstring property_class_name = get_native_class_name(property_class, false);
+            return std::format(STR("TSoftObjectPtr<{}>"), property_class_name);
+        }
+
+        // Interface Property
+        if (property->IsA<FInterfaceProperty>())
+        {
+            FInterfaceProperty* interface_property = static_cast<FInterfaceProperty*>(property);
+            UClass* interface_class = interface_property->GetInterfaceClass();
+
+            if (interface_class == NULL || interface_class == UInterface::StaticClass())
+            {
+                return STR("FScriptInterface");
+            }
+
+            File::StringType interface_class_name{};
+            interface_class_name.append(get_native_class_name(interface_class, true));
+            return std::format(STR("TScriptInterface<{}>"), interface_class_name);
+        }
+
+        // Struct Property
+        if (property->IsA<FStructProperty>())
+        {
+            FStructProperty* struct_property = static_cast<FStructProperty*>(property);
+            UScriptStruct* script_struct = struct_property->GetStruct();
+
+            if (script_struct == NULL)
+            {
+                throw std::runtime_error(RC::fmt("Struct is NULL for StructProperty %S", property->GetName().c_str()));
+            }
+
+            const std::wstring native_struct_name = get_native_struct_name(script_struct);
+            return native_struct_name;
+        }
+
+        // Delegate Properties
+        if (property->IsA<FDelegateProperty>())
+        {
+            FDelegateProperty* delegate_property = static_cast<FDelegateProperty*>(property);
+
+            const std::wstring delegate_type_name = generate_delegate_name(delegate_property, class_context->GetName());
+            return delegate_type_name;
+        }
+
+        // In 4.23, they replaced 'MulticastDelegateProperty' with 'Inline' & 'Sparse' variants
+        // It looks like the delegate macro might be the same as the 'Inline' variant in later versions, so we'll use the same branch here
+        if (property->IsA<FMulticastInlineDelegateProperty>() || property->IsA<FMulticastDelegateProperty>())
+        {
+            FMulticastInlineDelegateProperty* delegate_property = static_cast<FMulticastInlineDelegateProperty*>(property);
+
+            const std::wstring delegate_type_name = generate_delegate_name(delegate_property, class_context->GetName());
+            return delegate_type_name;
+        }
+
+        if (property->IsA<FMulticastSparseDelegateProperty>())
+        {
+            FMulticastSparseDelegateProperty* delegate_property = static_cast<FMulticastSparseDelegateProperty*>(property);
+
+            const std::wstring delegate_type_name = generate_delegate_name(delegate_property, class_context->GetName());
+            return delegate_type_name;
+        }
+
+        // Field path property
+        if (property->IsA<FFieldPathProperty>())
+        {
+            FFieldPathProperty* field_path_property = static_cast<FFieldPathProperty*>(property);
+            const std::wstring property_class_name = field_path_property->GetPropertyClass()->GetName();
+            return std::format(STR("TFieldPath<F{}>"), property_class_name);
+        }
+
+        // Collection and Map Properties
+        //  TODO: This is missing support for freeze image array properties because XArrayProperty is incomplete. (low priority)
+        if (property->IsA<FArrayProperty>())
+        {
+            FArrayProperty* array_property = static_cast<FArrayProperty*>(property);
+            FProperty* inner_property = array_property->GetInner();
+
+            File::StringType inner_property_type{};
+            inner_property_type.append(generate_property_csharp_name(inner_property, is_top_level_declaration, class_context));
+            if (inner_property_type.contains(STR("*")))
+            {
+                inner_property_type = STR("IntPtr");
+            }
+            return std::format(STR("TArray<{}>"), inner_property_type);
+        }
+
+        if (property->IsA<FSetProperty>())
+        {
+            FSetProperty* set_property = static_cast<FSetProperty*>(property);
+            FProperty* element_prop = set_property->GetElementProp();
+
+            std::wstring element_property_type = generate_property_csharp_name(element_prop, is_top_level_declaration, class_context);
+            if (element_property_type.contains(STR("*")))
+            {
+                element_property_type = std::wstring(STR("IntPtr"));
+            }
+            return std::format(STR("TSet<{}>"), element_property_type);
+        }
+
+        // TODO: This is missing support for freeze image map properties because XMapProperty is incomplete. (low priority)
+        if (property->IsA<FMapProperty>())
+        {
+            FMapProperty* map_property = static_cast<FMapProperty*>(property);
+            FProperty* key_property = map_property->GetKeyProp();
+            FProperty* value_property = map_property->GetValueProp();
+
+            File::StringType key_type{};
+            File::StringType value_type{};
+            key_type.append(generate_property_csharp_name(key_property, is_top_level_declaration, class_context));
+            value_type.append(generate_property_csharp_name(value_property, is_top_level_declaration, class_context));
+            if (key_type.contains(STR("*")))
+            {
+                key_type = STR("IntPtr");
+            }
+            if (value_type.contains(STR("*")))
+            {
+                value_type = STR("IntPtr");
+            }
+            return std::format(STR("TMap<{}, {}>"), key_type, value_type);
+        }
+
+        // Standard properties that do not have any special attributes
+        if (property->IsA<FNameProperty>())
+        {
+            return STR("FName");
+        }
+        else if (property->IsA<FStrProperty>())
+        {
+            return STR("FString");
+        }
+        else if (property->IsA<FTextProperty>())
+        {
+            return STR("FText");
+        }
+        throw std::runtime_error(RC::fmt("Unsupported property class %S", field_class_name.c_str()));
+    }
 
     auto generate_property_lua_name(FProperty* property, bool is_top_level_declaration, UObject* class_context) -> File::StringType
     {

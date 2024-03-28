@@ -399,6 +399,13 @@ namespace RC::GUI::Dumpers
             UE4SSProgram::get_program().generate_cxx_headers(working_dir + STR("\\CXXHeaderDump"));
         }
 
+        if (ImGui::Button("Generate C# Types\n"))
+        {
+            File::StringType working_dir{UE4SSProgram::get_program().get_working_directory()};
+            UE4SSProgram::get_program().generate_csharp_types(working_dir + STR("\\CSharpTypes"));
+            UE4SSProgram::get_program().generate_csharp_functions(working_dir + STR("\\CSharpFunctions"));
+        }
+
         if (ImGui::Button("Generate Lua Types\n"))
         {
             File::StringType working_dir{UE4SSProgram::get_program().get_working_directory()};

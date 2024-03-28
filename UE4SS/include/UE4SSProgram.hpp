@@ -64,6 +64,8 @@ namespace RC
         uint64_t safety_padding[8]{0};
     };
 
+    EXTERN_C RC_UE4SS_API auto setup_mod(wchar_t* mod_path) -> void;
+    
     class UE4SSProgram : public MProgram
     {
       public:
@@ -174,15 +176,19 @@ namespace RC
         auto fire_dll_load_for_cpp_mods(std::wstring_view dll_name) -> void;
 
       public:
+        auto setup_mod(wchar_t* mod_path) -> void;
         auto init() -> void;
         auto is_program_started() -> bool;
         auto reinstall_mods() -> void;
         auto get_object_dumper_output_directory() -> const File::StringType;
         RC_UE4SS_API auto get_module_directory() -> File::StringViewType;
+        RC_UE4SS_API auto get_game_executable_directory() -> File::StringViewType;
         RC_UE4SS_API auto get_working_directory() -> File::StringViewType;
         RC_UE4SS_API auto get_mods_directory() -> File::StringViewType;
         RC_UE4SS_API auto generate_uht_compatible_headers() -> void;
         RC_UE4SS_API auto generate_cxx_headers(const std::filesystem::path& output_dir) -> void;
+        RC_UE4SS_API auto generate_csharp_types(const std::filesystem::path& output_dir) -> void;
+        RC_UE4SS_API auto generate_csharp_functions(const std::filesystem::path& output_dir) -> void;
         RC_UE4SS_API auto generate_lua_types(const std::filesystem::path& output_dir) -> void;
         auto get_debugging_ui() -> GUI::DebuggingGUI&
         {

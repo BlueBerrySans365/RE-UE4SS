@@ -2119,8 +2119,8 @@ No overload found for function 'IterateGameDirectories'.
 Overloads:
 #1: IterateGameDirectories()"};
 
-            std::filesystem::path module_directory = UE4SSProgram::get_program().get_module_directory();
-            auto game_content_dir = module_directory.parent_path().parent_path().parent_path() / "Content";
+            std::filesystem::path module_directory = UE4SSProgram::get_program().get_game_executable_directory();
+            auto game_content_dir = module_directory.parent_path().parent_path() / "Content";
             if (!std::filesystem::exists(game_content_dir))
             {
                 Output::send<LogLevel::Warning>(STR("IterateGameDirectories: Could not locate the root directory because the directory structure is unknown "
@@ -2129,8 +2129,8 @@ Overloads:
                 return 1;
             }
 
-            auto game_name = module_directory.parent_path().parent_path().parent_path().stem();
-            auto game_root_directory = module_directory.parent_path().parent_path().parent_path().parent_path();
+            auto game_name = module_directory.parent_path().parent_path().stem();
+            auto game_root_directory = module_directory.parent_path().parent_path().parent_path();
             auto directories_table = lua.prepare_new_table();
 
             std::function<void(const std::filesystem::path&, LuaMadeSimple::Lua::Table&)> iterate_directory =
@@ -2234,8 +2234,8 @@ No overload found for function 'CreateLogicModsDirectory'.
 Overloads:
 #1: CreateLogicModsDirectory()"};
 
-            std::filesystem::path module_directory = UE4SSProgram::get_program().get_module_directory();
-            auto game_content_dir = module_directory.parent_path().parent_path().parent_path() / "Content";
+            std::filesystem::path module_directory = UE4SSProgram::get_program().get_game_executable_directory();
+            auto game_content_dir = module_directory.parent_path().parent_path() / "Content";
             if (!std::filesystem::exists(game_content_dir))
             {
                 lua.throw_error("CreateLogicModsDirectory: Could not locate the \"Content\" directory because the directory structure is unknown (not "

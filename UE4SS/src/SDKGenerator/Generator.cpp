@@ -1011,6 +1011,456 @@ namespace RC::UEGenerator
             current_class_content.append(STR(");"));
         }
     };
+    
+    class CSharpTypesGenerator
+    {
+      public:
+        auto get_file_extension() -> File::StringType
+        {
+            return STR(".cs");
+        }
+        auto generate_file_header(GeneratedFile& generated_file) -> void
+        {
+            generated_file.primary_file.write_string_to_file(STR("using System.Runtime.InteropServices;\n\n"));
+            generated_file.primary_file.write_string_to_file(STR("namespace UnrealDump;\n\n"));
+        }
+        auto generate_file_footer(GeneratedFile& generated_file) -> void
+        {
+        }
+        auto generate_enum_declaration(File::StringType& content_buffer, UEnum* uenum) -> void
+        {
+            content_buffer.append(std::format(STR("public enum {} {{\n"), get_native_enum_name(uenum, false)));
+        }
+        auto generate_enum_member(File::StringType& content_buffer, UEnum* uenum, const File::StringType& enum_value_name, const Unreal::FEnumNamePair& elem) -> void
+        {
+            content_buffer.append(std::format(STR("{}{} = {},\n"),
+                                              generate_tab(),
+                                              enum_value_name,
+                                              elem.Value));
+        }
+        auto generate_enum_end(File::StringType& content_buffer, UEnum* uenum) -> void
+        {
+            content_buffer.append(std::format(STR("}};")));
+        }
+        auto should_generate_class(UStruct* native_class)
+        {
+            return true;
+        }
+        auto generate_class(TypeGenerator<CSharpTypesGenerator>* generator, ObjectInfo& object_info, GeneratedFile& generated_file, File::StringType& current_class_content)
+        {
+            UStruct* native_class = static_cast<UStruct*>(object_info.object);
+            File::StringType content_buffer{};
+
+            UStruct* inherits_from_class = native_class->GetSuperStruct();
+
+            // Make sure that the base class is defined
+            generator->generate_class_dependency(object_info, inherits_from_class, current_class_content);
+
+            // If any properties have dependencies, make sure that they are defined
+            // This makes sure that we don't have member variables with undefined types (if the types are local, otherwise we need to include the file that the struct exists in)
+            std::vector<PropertyInfo> properties_to_generate{};
+            for (XProperty* property : native_class->ForEachProperty())
+            {
+                properties_to_generate.emplace_back(
+                        PropertyInfo{property, generator->generate_class_dependency_from_property(object_info, property, current_class_content)});
+            }
+
+            std::vector<FunctionInfo> functions_to_generate{};
+            for (UFunction* function : native_class->ForEachFunction())
+            {
+                auto& function_info = functions_to_generate.emplace_back(FunctionInfo{function, object_info});
+
+                for (XProperty* param : function->ForEachProperty())
+                {
+                    if (!param->HasAnyPropertyFlags(Unreal::CPF_Parm | Unreal::CPF_ReturnParm))
+                    {
+                        continue;
+                    }
+
+                    function_info.params.emplace_back(
+                            PropertyInfo{param, generator->generate_class_dependency_from_property(object_info, param, current_class_content)});
+                }
+            }
+
+            const auto class_name = generate_class_name(native_class);
+
+            generate_class_declaration(content_buffer, native_class, inherits_from_class);
+
+            StringType class_prop{};
+
+            if (inherits_from_class)
+            {
+                try
+                {
+                    class_prop = std::format(STR("{}[FieldOffset(0x{:04X})] public {} baseObj;"),
+                                            generate_tab(),
+                                            0,
+                                            generate_class_name(inherits_from_class));
+                }
+                catch (std::exception& e)
+                {
+                    Output::send<LogLevel::Warning>(STR("Could not generate base object property '{}' because: {}\n"), generate_class_name(inherits_from_class), to_wstring(e.what()));
+                }
+                
+                content_buffer.append(std::format(STR("{}\n"), class_prop));
+            }
+            
+            int32_t num_padding_elements{0};
+            XProperty* last_property_in_this_class{nullptr};
+
+            for (const auto& property_info : properties_to_generate)
+            {
+                XProperty* property = property_info.property;
+                int32_t current_property_offset = property->GetOffset_Internal();
+                int32_t current_property_size = property->GetSize();
+
+                StringType part_one{};
+                try
+                {
+                    part_one = std::format(STR("{}[FieldOffset(0x{:04X})] public {} {};"),
+                                            generate_tab(),
+                                            property->GetOffset_Internal(),
+                                            generate_property_csharp_name(property, true, native_class),
+                                            property->GetName());
+                }
+                catch (std::exception& e)
+                {
+                    Output::send<LogLevel::Warning>(STR("Could not generate property '{}' because: {}\n"), property->GetFullName(), to_wstring(e.what()));
+                    continue;
+                }
+
+                if (property->IsA<FDelegateProperty>())
+                {
+                }
+                else if (property->IsA<FMulticastInlineDelegateProperty>())
+                {
+                }
+                else if (property->IsA<FMulticastSparseDelegateProperty>())
+                {
+                }
+                else
+                {
+                    content_buffer.append(std::format(STR("{}\n"), part_one));
+                }
+
+                last_property_in_this_class = property;
+            }
+
+            int32_t class_size = native_class->GetPropertiesSize();
+            generate_class_struct_end(content_buffer, class_name, class_size, num_padding_elements, last_property_in_this_class);
+
+            // Functions
+            /*if (native_class->HasChildren())
+            {
+                content_buffer.append(STR("\n"));
+                for (const auto& function_info : functions_to_generate)
+                {
+                    generator->generate_function_declaration(object_info, function_info, generated_file, content_buffer);
+                }
+            }*/
+
+            generate_class_end(content_buffer, class_size);
+
+            content_buffer.append(STR("\n\n"));
+
+            current_class_content.append(content_buffer);
+        }
+
+        auto generate_class_declaration(File::StringType& content_buffer, UStruct* native_class, UStruct* inherits_from_class) -> void
+        {
+            int32_t class_size = native_class->GetPropertiesSize();
+            content_buffer.append(std::format(STR("[StructLayout(LayoutKind.Explicit, Size = 0x{:X})] \n"), class_size));
+            auto class_name = generate_class_name(native_class);
+            content_buffer.append(std::format(STR("public unsafe struct {}\n{{\n"), class_name));
+        }
+        auto generate_class_struct_end(File::StringType& content_buffer,
+                                       const File::StringType& class_name,
+                                       size_t class_size,
+                                       int32_t num_padding_elements,
+                                       XProperty* last_property_in_this_class) -> void
+        {
+        }
+        auto generate_class_end(File::StringType& content_buffer, size_t class_size) -> void
+        {
+            content_buffer.append(STR("}"));
+        }
+
+        auto generate_function_declaration(TypeGenerator<CSharpTypesGenerator>* generator,
+                                           File::StringType& current_class_content,
+                                           ObjectInfo& owner,
+                                           const FunctionInfo& function_info,
+                                           File::StringType function_name,
+                                           XProperty* return_property,
+                                           std::optional<PropertyInfo> return_property_info) -> void
+        {
+            File::StringType function_type_name{};
+            if (return_property)
+            {
+                try
+                {
+                    function_type_name = generate_property_csharp_name(return_property, true, function_info.function);
+                }
+                catch (std::exception& e)
+                {
+                    Output::send<LogLevel::Warning>(STR("Could not generate function '{}' because: {}\n"),
+                                                    function_info.function->GetFullName(),
+                                                    to_wstring(e.what()));
+                    return;
+                }
+            }
+            else
+            {
+                function_type_name = STR("void");
+            }
+
+            current_class_content.append(std::format(STR("{}public {} {}("), generate_tab(), function_type_name, function_name));
+
+            for (size_t i = 0; i < function_info.params.size(); ++i)
+            {
+                const auto& param_info = function_info.params[i];
+                if (!param_info.property->HasAnyPropertyFlags(Unreal::CPF_ReturnParm))
+                {
+                    try
+                    {
+                        current_class_content.append(
+                                std::format(STR("{}{}{}{} {}"),
+                                            param_info.property->HasAnyPropertyFlags(Unreal::CPF_ConstParm) ? STR("const ") : STR(""),
+                                            param_info.should_forward_declare ? STR("class ") : STR(""),
+                                            generate_property_csharp_name(param_info.property, true, function_info.function),
+                                            param_info.property->HasAnyPropertyFlags(Unreal::CPF_ReferenceParm | Unreal::CPF_OutParm) ? STR("&") : STR(""),
+                                            param_info.property->GetName()));
+                    }
+                    catch (std::exception& e)
+                    {
+                        Output::send<LogLevel::Warning>(STR("Could not generate function '{}' because: {}\n"),
+                                                        function_info.function->GetFullName(),
+                                                        to_wstring(e.what()));
+                        return;
+                    }
+
+                    if (i + 1 < function_info.params.size())
+                    {
+                        auto* next_param = function_info.params[i + 1].property;
+                        if (next_param && (!next_param->HasAnyPropertyFlags(Unreal::CPF_ReturnParm) || i + 2 < function_info.params.size()))
+                        {
+                            current_class_content.append(STR(", "));
+                        }
+                    }
+                }
+            }
+            current_class_content.append(STR(");"));
+        }
+    };
+    
+    class CSharpFunctionsGenerator
+    {
+      public:
+        auto get_file_extension() -> File::StringType
+        {
+            return STR(".cs");
+        }
+        auto generate_file_header(GeneratedFile& generated_file) -> void
+        {
+            generated_file.primary_file.write_string_to_file(STR("using UnrealDump;\n"));
+            generated_file.primary_file.write_string_to_file(STR("using UE4SSDotNetFramework.Framework;\n\n"));
+            generated_file.primary_file.write_string_to_file(STR("namespace UnrealWrapper;\n\n"));
+        }
+        auto generate_file_footer(GeneratedFile& generated_file) -> void
+        {
+        }
+        auto generate_enum_declaration(File::StringType& content_buffer, UEnum* uenum) -> void {}
+        auto generate_enum_member(File::StringType& content_buffer, UEnum* uenum, const File::StringType& enum_value_name, const Unreal::FEnumNamePair& elem) -> void {}
+        auto generate_enum_end(File::StringType& content_buffer, UEnum* uenum) -> void {}
+        auto should_generate_class(UStruct* native_class)
+        {
+            return true;
+        }
+        auto generate_class(TypeGenerator<CSharpFunctionsGenerator>* generator, ObjectInfo& object_info, GeneratedFile& generated_file, File::StringType& current_class_content)
+        {
+            UStruct* native_class = static_cast<UStruct*>(object_info.object);
+            File::StringType content_buffer{};
+            
+            if (native_class->GetClassPrivate()->IsChildOf<UScriptStruct>()) return;
+
+            UStruct* inherits_from_class = native_class->GetSuperStruct();
+
+            // Make sure that the base class is defined
+            generator->generate_class_dependency(object_info, inherits_from_class, current_class_content);
+
+            std::vector<FunctionInfo> functions_to_generate{};
+            for (UFunction* function : native_class->ForEachFunction())
+            {
+                auto& function_info = functions_to_generate.emplace_back(FunctionInfo{function, object_info});
+
+                for (XProperty* param : function->ForEachProperty())
+                {
+                    if (!param->HasAnyPropertyFlags(Unreal::CPF_Parm | Unreal::CPF_ReturnParm))
+                    {
+                        continue;
+                    }
+
+                    function_info.params.emplace_back(
+                            PropertyInfo{param, generator->generate_class_dependency_from_property(object_info, param, current_class_content)});
+                }
+            }
+
+            const auto class_name = generate_class_name(native_class);
+
+            generate_class_declaration(content_buffer, native_class, inherits_from_class);
+
+            StringType class_prop{};
+            
+            // Functions
+            if (native_class->HasChildren())
+            {
+                content_buffer.append(STR("\n"));
+                for (const auto& function_info : functions_to_generate)
+                {
+                    generator->generate_function_declaration(object_info, function_info, generated_file, content_buffer);
+                }
+            }
+
+            generate_class_end(content_buffer, 0);
+
+            content_buffer.append(STR("\n\n"));
+
+            current_class_content.append(content_buffer);
+        }
+
+        auto generate_class_declaration(File::StringType& content_buffer, UStruct* native_class, UStruct* inherits_from_class) -> void
+        {
+            auto class_name = generate_class_name(native_class);
+            content_buffer.append(std::format(STR("public unsafe class {} : ObjectBase<{}>\n{{\n"), native_class->GetName(), class_name));
+            content_buffer.append(std::format(STR("{}public {}(IntPtr pointer) : base(pointer) {{}}"), generate_tab(), native_class->GetName()));
+        }
+        auto generate_class_struct_end(File::StringType& content_buffer,
+                                       const File::StringType& class_name,
+                                       size_t class_size,
+                                       int32_t num_padding_elements,
+                                       XProperty* last_property_in_this_class) -> void
+        {
+        }
+        auto generate_class_end(File::StringType& content_buffer, size_t class_size) -> void
+        {
+            content_buffer.append(STR("}"));
+        }
+
+        auto generate_function_declaration(TypeGenerator<CSharpFunctionsGenerator>* generator,
+                                           File::StringType& current_class_content,
+                                           ObjectInfo& owner,
+                                           const FunctionInfo& function_info,
+                                           File::StringType function_name,
+                                           XProperty* return_property,
+                                           std::optional<PropertyInfo> return_property_info) -> void
+        {
+            File::StringType function_type_name{};
+            if (return_property)
+            {
+                try
+                {
+                    function_type_name = generate_property_csharp_name(return_property, true, function_info.function);
+                }
+                catch (std::exception& e)
+                {
+                    Output::send<LogLevel::Warning>(STR("Could not generate function '{}' because: {}\n"),
+                                                    function_info.function->GetFullName(),
+                                                    to_wstring(e.what()));
+                    return;
+                }
+            }
+            else
+            {
+                function_type_name = STR("void");
+            }
+
+            current_class_content.append(std::format(STR("{}public {} {}("), generate_tab(), function_type_name, function_name));
+
+            for (size_t i = 0; i < function_info.params.size(); ++i)
+            {
+                const auto& param_info = function_info.params[i];
+                if (!param_info.property->HasAnyPropertyFlags(Unreal::CPF_ReturnParm))
+                {
+                    try
+                    {
+                        current_class_content.append(
+                                std::format(STR("{}{} {}"),
+                                            param_info.property->HasAnyPropertyFlags(Unreal::CPF_ReferenceParm | Unreal::CPF_OutParm) ? STR("ref ") : STR(""),
+                                            generate_property_csharp_name(param_info.property, true, function_info.function),
+                                            param_info.property->GetName()));
+                    }
+                    catch (std::exception& e)
+                    {
+                        Output::send<LogLevel::Warning>(STR("Could not generate function '{}' because: {}\n"),
+                                                        function_info.function->GetFullName(),
+                                                        to_wstring(e.what()));
+                        return;
+                    }
+
+                    if (i + 1 < function_info.params.size())
+                    {
+                        auto* next_param = function_info.params[i + 1].property;
+                        if (next_param && (!next_param->HasAnyPropertyFlags(Unreal::CPF_ReturnParm) || i + 2 < function_info.params.size()))
+                        {
+                            current_class_content.append(STR(", "));
+                        }
+                    }
+                }
+            }
+            
+            current_class_content.append(std::format(STR(")\n{}{{\n"), generate_tab()));
+            current_class_content.append(std::format(STR("{}Span<(string name, object value)> @params = [\n"), generate_tab(2)));
+            
+            for (size_t i = 0; i < function_info.params.size(); ++i)
+            {
+                const auto& param_info = function_info.params[i];
+                if (!param_info.property->HasAnyPropertyFlags(Unreal::CPF_ReturnParm))
+                {
+                    try
+                    {
+                        current_class_content.append(
+                                std::format(STR("{}(\"{}\", {}{})"),
+                                    generate_tab(3),
+                                    param_info.property->GetName(),
+                                    generate_property_csharp_name(param_info.property, true, function_info.function).contains(STR("*")) ? STR("(IntPtr)") : STR(""), 
+                                    param_info.property->GetName()));
+                    }
+                    catch (std::exception& e)
+                    {
+                        Output::send<LogLevel::Warning>(STR("Could not generate function '{}' because: {}\n"),
+                                                        function_info.function->GetFullName(),
+                                                        to_wstring(e.what()));
+                        return;
+                    }
+
+                    if (i + 1 < function_info.params.size())
+                    {
+                        auto* next_param = function_info.params[i + 1].property;
+                        if (next_param && (!next_param->HasAnyPropertyFlags(Unreal::CPF_ReturnParm) || i + 2 < function_info.params.size()))
+                        {
+                            current_class_content.append(STR(", "));
+                        }
+                    }
+                    current_class_content.append(STR("\n"));
+                }
+            }
+            
+            current_class_content.append(std::format(STR("{}];\n"), generate_tab(2)));
+
+            if (return_property)
+            {
+                current_class_content.append(std::format(STR("{}return {}ProcessEvent<{}>(GetFunction(\"{}\"), @params);\n"), generate_tab(2),
+                    function_type_name.contains(STR("*")) ? std::format(STR("({})"), function_type_name) : STR(""), 
+                    function_type_name.contains(STR("*")) ? STR("IntPtr") : function_type_name,
+                    function_name));
+            }
+            else
+            {
+                current_class_content.append(std::format(STR("{}ProcessEvent(GetFunction(\"{}\"), @params);\n"), generate_tab(2), function_name));
+            }
+            
+            current_class_content.append(std::format(STR("{}}}"), generate_tab()));
+        }
+    };
 
     class LuaTypesGenerator
     {
@@ -1306,6 +1756,18 @@ namespace RC::UEGenerator
     auto generate_cxx_headers(const std::filesystem::path directory_to_generate_in) -> void
     {
         TypeGenerator<CXXHeaderGenerator> generator{directory_to_generate_in};
+        generator.generate();
+    }
+
+    auto generate_csharp_types(const std::filesystem::path directory_to_generate_in) -> void
+    {
+        TypeGenerator<CSharpTypesGenerator> generator{directory_to_generate_in};
+        generator.generate();
+    }
+
+    auto generate_csharp_functions(const std::filesystem::path directory_to_generate_in) -> void
+    {
+        TypeGenerator<CSharpFunctionsGenerator> generator{directory_to_generate_in};
         generator.generate();
     }
 

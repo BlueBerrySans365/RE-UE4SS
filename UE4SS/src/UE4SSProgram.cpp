@@ -159,6 +159,11 @@ namespace RC
         return lib;
     }
 
+    auto setup_mod(wchar_t* mod_path) -> void
+    {
+        UE4SSProgram::get_program().setup_mod(mod_path);
+    }
+
     UE4SSProgram::UE4SSProgram(const std::wstring& moduleFilePath, std::initializer_list<BinaryOptions> options) : MProgram(options)
     {
         ProfilerScope();
@@ -984,6 +989,65 @@ namespace RC
             }
         }
     }
+    
+    template <typename ModType>
+    auto start_mod(const std::unique_ptr<Mod>& mod) -> void
+    {
+        if (!mod->is_installed()) return;
+        Output::send(STR("Starting {} mod '{}'\n"), std::is_same_v<ModType, LuaMod> ? STR("Lua") : STR("C++"), mod->get_name().data());
+        mod->start_mod();
+    }
+
+    template <typename ModType>
+    auto install_mod(std::vector<std::unique_ptr<Mod>>& mods) -> void
+    {
+        const auto& mod = mods.back();
+        
+        if (!dynamic_cast<ModType*>(mod.get())) return;
+
+        if (std::find_if(mods.begin(), mods.end(), [&](auto& elem) {
+            return elem->get_name() == mod->get_name();
+        }) == mods.end())
+        {
+            mod->set_installable(false);
+            Output::send(STR("Mod name '{}' is already in use.\n"), mod->get_name());
+            return;
+        }
+
+        if (mod->is_installed())
+        {
+            Output::send(STR("Tried to install a mod that was already installed, Mod: '{}'\n"), mod->get_name());
+            return;
+        }
+
+        if (!mod->is_installable())
+        {
+            Output::send(STR("Was unable to install mod '{}' for unknown reasons. Mod is not installable.\n"), mod->get_name());
+            return;
+        }
+
+        mod->set_installed(true);
+    }
+    
+    auto UE4SSProgram::setup_mod(wchar_t* mod_path) -> void
+    {
+        ProfilerScope();
+        
+        const std::filesystem::path sub_directory(mod_path);
+
+        if (std::filesystem::exists(sub_directory / "scripts"))
+        {
+            m_mods.emplace_back(std::make_unique<LuaMod>(*this, sub_directory.parent_path().filename().wstring(), sub_directory.wstring()));
+            install_mod<LuaMod>(m_mods);
+            start_mod<LuaMod>(m_mods.back());
+        }
+        if (std::filesystem::exists(sub_directory / "dlls"))
+        {
+            m_mods.emplace_back(std::make_unique<CppMod>(*this, sub_directory.parent_path().filename().wstring(), sub_directory.wstring()));
+            install_mod<CppMod>(m_mods);
+            start_mod<CppMod>(m_mods.back());
+        }
+    }
 
     template <typename ModType>
     auto install_mods(std::vector<std::unique_ptr<Mod>>& mods) -> void
@@ -1299,6 +1363,11 @@ namespace RC
         return m_module_file_path.c_str();
     }
 
+    auto UE4SSProgram::get_game_executable_directory() -> File::StringViewType
+    {
+        return m_game_executable_directory.c_str();
+    }
+
     auto UE4SSProgram::get_working_directory() -> File::StringViewType
     {
         return m_working_directory.c_str();
@@ -1348,6 +1417,66 @@ namespace RC
             ScopedTimer generator_timer{&generator_duration};
 
             UEGenerator::generate_cxx_headers(output_dir);
+
+            Output::send(STR("Unloading all forcefully loaded assets\n"));
+        }
+
+        UAssetRegistry::FreeAllForcefullyLoadedAssets();
+        Output::send(STR("SDK generated in {} seconds.\n"), generator_duration);
+    }
+
+    auto UE4SSProgram::generate_csharp_types(const std::filesystem::path& output_dir) -> void
+    {
+        ProfilerScope();
+        if (settings_manager.CXXHeaderGenerator.LoadAllAssetsBeforeGeneratingCXXHeaders)
+        {
+            Output::send(STR("Loading all assets...\n"));
+            double asset_loading_duration{};
+            {
+                ProfilerScopeNamed("loading all assets");
+                ScopedTimer loading_timer{&asset_loading_duration};
+
+                UAssetRegistry::LoadAllAssets();
+            }
+            Output::send(STR("Loading all assets took {} seconds\n"), asset_loading_duration);
+        }
+
+        double generator_duration;
+        {
+            ProfilerScopeNamed("unloading all force-loaded assets");
+            ScopedTimer generator_timer{&generator_duration};
+
+            UEGenerator::generate_csharp_types(output_dir);
+
+            Output::send(STR("Unloading all forcefully loaded assets\n"));
+        }
+
+        UAssetRegistry::FreeAllForcefullyLoadedAssets();
+        Output::send(STR("SDK generated in {} seconds.\n"), generator_duration);
+    }
+
+    auto UE4SSProgram::generate_csharp_functions(const std::filesystem::path& output_dir) -> void
+    {
+        ProfilerScope();
+        if (settings_manager.CXXHeaderGenerator.LoadAllAssetsBeforeGeneratingCXXHeaders)
+        {
+            Output::send(STR("Loading all assets...\n"));
+            double asset_loading_duration{};
+            {
+                ProfilerScopeNamed("loading all assets");
+                ScopedTimer loading_timer{&asset_loading_duration};
+
+                UAssetRegistry::LoadAllAssets();
+            }
+            Output::send(STR("Loading all assets took {} seconds\n"), asset_loading_duration);
+        }
+
+        double generator_duration;
+        {
+            ProfilerScopeNamed("unloading all force-loaded assets");
+            ScopedTimer generator_timer{&generator_duration};
+
+            UEGenerator::generate_csharp_functions(output_dir);
 
             Output::send(STR("Unloading all forcefully loaded assets\n"));
         }
