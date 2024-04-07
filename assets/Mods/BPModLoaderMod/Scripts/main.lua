@@ -138,8 +138,15 @@ local function LoadModConfigs()
         end
     end
 
+    local Files = LogicModsDir.__files
+    for _, ModDirectory in pairs(LogicModsDir) do
+        for _, ModFile in pairs(ModDirectory.__files) do
+            table.insert(Files, ModFile)
+        end
+    end
+
     -- Load a default configuration for mods that didn't have their own configuration.
-    for _, ModFile in pairs(LogicModsDir.__files) do
+    for _, ModFile in pairs(Files) do
         local ModName = ModFile.__name
         local ModNameNoExtension = ModName:match("(.+)%..+$")
         local FileExtension = ModName:match("^.+(%..+)$");
@@ -262,16 +269,24 @@ RegisterLoadMapPostHook(function(Engine, World)
     LoadMods(World:get())
 end)
 
+local ExistingActor = FindFirstOf("Actor")
+if ExistingActor ~= nil and ExistingActor:IsValid() then
+    LoadMods(ExistingActor:GetWorld())
+end
+
 RegisterBeginPlayPostHook(function(ContextParam)
     local Context = ContextParam:get()
     for _,ModConfig in ipairs(OrderedMods) do
         if Context:GetClass():GetFName() ~= ModConfig.AssetNameAsFName then return end
-        local PostBeginPlay = Context.PostBeginPlay
-        if PostBeginPlay:IsValid() then
-            Log(string.format("Executing 'PostBeginPlay' for mod '%s'\n", Context:GetFullName()))
-            PostBeginPlay()
-        else
-            Log(string.format("PostBeginPlay not valid for mod %s\n", Context:GetFullName(), true))
+        local AssetPathWithClassPrefix = string.format("BlueprintGeneratedClass %s.%s", ModConfig.AssetPath, ModConfig.AssetName)
+        if AssetPathWithClassPrefix == Context:GetClass():GetFullName() then
+            local PostBeginPlay = Context.PostBeginPlay
+            if PostBeginPlay:IsValid() then
+                Log(string.format("Executing 'PostBeginPlay' for mod '%s'\n", Context:GetFullName()))
+                PostBeginPlay()
+            else
+                Log(string.format("PostBeginPlay not valid for mod %s\n", Context:GetFullName()), true)
+            end
         end
     end
 end)
